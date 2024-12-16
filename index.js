@@ -1,12 +1,35 @@
 require("dotenv").config();
 const express = require("express");
+const jwt = require("jsonwebtoken");
+const cookieParse = require("cookie-parser");
 const cors = require("cors");
 const app = express();
 const port = process.env.PORT || 3000;
 
 // middle where
 app.use(express.json());
-app.use(cors());
+app.use(cookieParse());
+app.use(
+  cors({
+    origin: ["http://localhost:5173"],
+    credentials: true,
+  })
+);
+
+const verifyToken = (req, res, nex) => {
+  const token = req.cookies.token;
+  if (!token) {
+    return res.status(401).send("Unauthorized access.");
+  }
+
+  jwt.verify(token, process.env.JWT_SECRET, function (err, decoded) {
+    if (err) {
+      return res.status(401).send("Unauthorized access.");
+    }
+    req.user = decoded;
+    nex();
+  });
+};
 
 const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 const uri = `mongodb+srv://${process.env.USER_NAME}:${process.env.USER_PASS}@cluster0.ze0za.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`;
@@ -30,6 +53,18 @@ async function run() {
     const jobApplicationCollection = client
       .db("jop-portal")
       .collection("job-application");
+
+    // auth related api
+    app.post("/jwt", async (req, res) => {
+      const user = req.body;
+      const token = jwt.sign(user, process.env.JWT_SECRET, { expiresIn: "1h" });
+      res
+        .cookie("token", token, {
+          httpOnly: true,
+          secure: false, // just for localhost
+        })
+        .send({ status: true });
+    });
 
     // jobs related apis
     // get all jobs
@@ -61,9 +96,14 @@ async function run() {
 
     // applicants apis
     // get data base on query
-    app.get("/job-application", async (req, res) => {
+    app.get("/job-application", verifyToken, async (req, res) => {
       const email = req.query.email;
       const query = { applicant_email: email };
+
+      if (req?.user?.email !== req.query.email) {
+        return res.status(403).send({ message: "forbidden access." });
+      }
+
       const result = await jobApplicationCollection.find(query).toArray();
 
       // not the best way
