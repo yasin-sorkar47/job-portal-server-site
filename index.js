@@ -1,14 +1,14 @@
 require("dotenv").config();
 const express = require("express");
-const jwt = require("jsonwebtoken");
-const cookieParse = require("cookie-parser");
 const cors = require("cors");
+const jwt = require("jsonwebtoken");
+const cookieParser = require("cookie-parser");
 const app = express();
 const port = process.env.PORT || 3000;
 
 // middle where
 app.use(express.json());
-app.use(cookieParse());
+app.use(cookieParser());
 app.use(
   cors({
     origin: ["http://localhost:5173"],
@@ -16,16 +16,18 @@ app.use(
   })
 );
 
-const verifyToken = (req, res, nex) => {
-  const token = req.cookies.token;
+const tokenVerify = (req, res, nex) => {
+  const token = req.cookies?.token;
+
   if (!token) {
-    return res.status(401).send("Unauthorized access.");
+    return res.status(401).send({ message: "Unauthorize access." });
   }
 
-  jwt.verify(token, process.env.JWT_SECRET, function (err, decoded) {
+  jwt.verify(token, process.env.JWT_SECRET, (err, decoded) => {
     if (err) {
-      return res.status(401).send("Unauthorized access.");
+      return res.status(401).send({ message: "Unauthorize access." });
     }
+
     req.user = decoded;
     nex();
   });
@@ -57,11 +59,23 @@ async function run() {
     // auth related api
     app.post("/jwt", async (req, res) => {
       const user = req.body;
-      const token = jwt.sign(user, process.env.JWT_SECRET, { expiresIn: "1h" });
+      const token = jwt.sign(user, process.env.JWT_SECRET, {
+        expiresIn: "1h",
+      });
+
       res
         .cookie("token", token, {
           httpOnly: true,
-          secure: false, // just for localhost
+          secure: false, //for localhost
+        })
+        .send({ status: true });
+    });
+
+    app.post("/logout", (req, res) => {
+      res
+        .clearCookie("token", {
+          httpOnly: true,
+          secure: false,
         })
         .send({ status: true });
     });
@@ -96,11 +110,11 @@ async function run() {
 
     // applicants apis
     // get data base on query
-    app.get("/job-application", verifyToken, async (req, res) => {
+    app.get("/job-application", tokenVerify, async (req, res) => {
       const email = req.query.email;
       const query = { applicant_email: email };
 
-      if (req?.user?.email !== req.query.email) {
+      if (req?.user?.email !== req.query?.email) {
         return res.status(403).send({ message: "forbidden access." });
       }
 
